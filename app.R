@@ -255,98 +255,114 @@ table.dataTable.cell-border tbody td { border-right:1px solid #111823!important;
 ui <- page_fluid(
   theme = bs_theme(bootswatch="darkly", primary="#3b82f6", `font-size-base`="0.875rem"),
   tags$head(tags$style(HTML(APP_CSS))),
-
+  
   # Page header
   div(class="pg-hdr",
-    fluidRow(
-      column(9,
-        div(style="display:flex;align-items:center;gap:14px;",
-          tags$img(src="https://www.mlbstatic.com/team-logos/league-on-dark/1.svg",
-                   height="44px",
-                   style="filter:drop-shadow(0 0 6px rgba(59,130,246,0.3));"),
-          h1(HTML("MLB <span>Daily Report</span>"), class="pg-title")
+      fluidRow(
+        column(9,
+               div(style="display:flex;align-items:center;gap:14px;",
+                   tags$img(src="https://www.mlbstatic.com/team-logos/league-on-dark/1.svg",
+                            height="44px",
+                            style="filter:drop-shadow(0 0 6px rgba(59,130,246,0.3));"),
+                   h1(HTML("MLB <span>Daily Report</span>"), class="pg-title")
+               ),
+               p(paste0(format(TODAY, "%A, %B %d, %Y"),
+                        "  ·  Data via MLB Stats API & Baseball Savant"), class="pg-meta")
         ),
-        p(paste0(format(TODAY, "%A, %B %d, %Y"),
-                 "  ·  Data via MLB Stats API & Baseball Savant"), class="pg-meta")
-      ),
-      column(3, style="text-align:right;display:flex;align-items:center;justify-content:flex-end;",
-        actionButton("refresh", "↻  Refresh", class="btn btn-refresh")
+        column(3, style="text-align:right;display:flex;align-items:center;justify-content:flex-end;",
+               actionButton("refresh", "↻  Refresh", class="btn btn-refresh")
+        )
       )
-    )
   ),
-
+  
   # Main tabs
   div(style="padding:0 28px 48px;",
-    navset_tab(id="app_tabs",
-
-      # ── TODAY tab ─────────────────────────────────────────────────────────
-      nav_panel("Today", value="today",
-        div(style="padding-top:20px;",
-          div(class="pg-section-title", "Today's Games"),
-          uiOutput("games_ui"),
-          div(style="margin-top:44px;"),
-          div(class="pg-section-title",
-              paste0("📊  ", MONTH_LABEL, " Monthly Leaders")),
-          p(paste0("Top 2 hitters per team in today's games · min ", MIN_AB,
-                   " AB · ranked by OPS"),
-            style="color:#6e7681;font-size:.78rem;font-family:'Space Mono',monospace;margin:-12px 0 20px;"),
-          uiOutput("monthly_ui")
-        )
-      ),
-
-      # ── LEADERBOARD tab ───────────────────────────────────────────────────
-      nav_panel("Leaderboard", value="leaderboard",
-        div(style="padding-top:20px;",
-          tabsetPanel(type="tabs",
-
-            tabPanel("🏏  Hitters",
-              div(style="margin-top:16px;"),
-              div(class="lb-filters",
-                div(class="lb-filter-group",
-                  tags$label("Team"),
-                  selectInput("lb_hit_team","", choices=c("All Teams"="ALL"), width="140px")
-                ),
-                div(class="lb-filter-group",
-                  tags$label("Position"),
-                  selectInput("lb_hit_pos","", choices=c("All Positions"="ALL"), width="140px")
-                ),
-                div(class="lb-filter-group",
-                  tags$label("Min PA"),
-                  numericInput("lb_hit_pa","", value=50, min=0, step=10, width="90px")
-                )
-              ),
-              DT::DTOutput("hitter_lb_dt")
-            ),
-
-            tabPanel("⚾  Pitchers",
-              div(style="margin-top:16px;"),
-              div(class="lb-filters",
-                div(class="lb-filter-group",
-                  tags$label("Team"),
-                  selectInput("lb_pit_team","", choices=c("All Teams"="ALL"), width="140px")
-                ),
-                div(class="lb-filter-group",
-                  tags$label("Role"),
-                  selectInput("lb_pit_role","",
-                    choices=c("All"="ALL","Starter"="SP","Reliever"="RP"), width="120px")
-                ),
-                div(class="lb-filter-group",
-                  tags$label("Min IP"),
-                  numericInput("lb_pit_ip","", value=10, min=0, step=5, width="90px")
-                )
-              ),
-              DT::DTOutput("pitcher_lb_dt")
-            )
-          )
-        )
+      navset_tab(id="app_tabs",
+                 
+                 # ── TODAY tab ─────────────────────────────────────────────────────────
+                 nav_panel("Today", value="today",
+                           div(style="padding-top:20px;",
+                               div(class="pg-section-title", "Today's Games"),
+                               uiOutput("games_ui"),
+                               div(style="margin-top:44px;"),
+                               div(class="pg-section-title",
+                                   paste0("📊  ", MONTH_LABEL, " Monthly Leaders")),
+                               p(paste0("Top 2 hitters per team in today's games · min ", MIN_AB,
+                                        " AB · ranked by OPS"),
+                                 style="color:#6e7681;font-size:.78rem;font-family:'Space Mono',monospace;margin:-12px 0 20px;"),
+                               uiOutput("monthly_ui")
+                           )
+                 ),
+                 
+                 # ── LEADERBOARD tab ───────────────────────────────────────────────────
+                 nav_panel("Leaderboard", value="leaderboard",
+                           div(style="padding-top:20px;",
+                               tabsetPanel(type="tabs",
+                                           
+                                           tabPanel("🏏  Hitters",
+                                                    div(style="margin-top:16px;"),
+                                                    div(class="lb-filters",
+                                                        div(class="lb-filter-group",
+                                                            tags$label("Team"),
+                                                            selectInput("lb_hit_team","", choices=c("All Teams"="ALL"), width="140px")
+                                                        ),
+                                                        div(class="lb-filter-group",
+                                                            tags$label("Position"),
+                                                            selectInput("lb_hit_pos","", choices=c("All Positions"="ALL"), width="140px")
+                                                        ),
+                                                        div(class="lb-filter-group",
+                                                            tags$label("Min PA"),
+                                                            numericInput("lb_hit_pa","", value=50, min=0, step=10, width="90px")
+                                                        )
+                                                    ),
+                                                    DT::DTOutput("hitter_lb_dt")
+                                           ),
+                                           
+                                           tabPanel("⚾  Pitchers",
+                                                    div(style="margin-top:16px;"),
+                                                    div(class="lb-filters",
+                                                        div(class="lb-filter-group",
+                                                            tags$label("Team"),
+                                                            selectInput("lb_pit_team","", choices=c("All Teams"="ALL"), width="140px")
+                                                        ),
+                                                        div(class="lb-filter-group",
+                                                            tags$label("Role"),
+                                                            selectInput("lb_pit_role","",
+                                                                        choices=c("All"="ALL","Starter"="SP","Reliever"="RP"), width="120px")
+                                                        ),
+                                                        div(class="lb-filter-group",
+                                                            tags$label("Min IP"),
+                                                            numericInput("lb_pit_ip","", value=10, min=0, step=5, width="90px")
+                                                        )
+                                                    ),
+                                                    DT::DTOutput("pitcher_lb_dt")
+                                           )
+                               )
+                           )
+                 )
       )
-    )
   )
 )
 
 # ── Server ───────────────────────────────────────────────────────────────────
 server <- function(input, output, session) {
-
+  
+  # ── Pre-warm WAR cache (Baseball Reference) ──────────────────────────────
+  # Fetch bref_war_bat() / bref_war_pitch() ASAP so bWAR is available as a
+  # reference data point for EVERY player click — not just leaderboard rows.
+  # Deferred 0.5s so the initial UI renders first; runs in this session's
+  # thread.  Memoised, so it only actually hits the network once per R process.
+  later::later(function() {
+    if (is.null(.war_cache$batters)) {
+      message("Pre-warming hitter WAR cache from Baseball Reference...")
+      fetch_lb_batters()
+    }
+    if (is.null(.war_cache$pitchers)) {
+      message("Pre-warming pitcher WAR cache from Baseball Reference...")
+      fetch_lb_pitchers()
+    }
+  }, delay = 0.1)
+  
   # ── Schedule ──────────────────────────────────────────────────────────────
   sched_r <- reactive({
     input$refresh
@@ -359,12 +375,12 @@ server <- function(input, output, session) {
       s
     })
   })
-
+  
   games_r <- reactive({
     s <- sched_r(); req(s, nrow(s) > 0)
     s %>% filter(game_type == "R") %>% distinct(game_pk, .keep_all=TRUE) %>% arrange(game_datetime)
   })
-
+  
   # ── Boxscores ──────────────────────────────────────────────────────────────
   boxscores_r <- reactive({
     gms <- games_r(); n <- nrow(gms)
@@ -375,7 +391,7 @@ server <- function(input, output, session) {
       })
     })
   })
-
+  
   # ── Monthly Statcast ───────────────────────────────────────────────────────
   monthly_r <- reactive({
     input$refresh
@@ -383,11 +399,11 @@ server <- function(input, output, session) {
       sc <- fetch_monthly_sc(); incProgress(0.9); compute_monthly(sc)
     })
   })
-
+  
   # ── Leaderboard reactives (lazy — only fetched when tab selected) ──────────
   lb_bat_r <- reactive({ fetch_lb_batters() })
   lb_pit_r <- reactive({ fetch_lb_pitchers() })
-
+  
   # Flexible column-name lookup for bref output
   bref_col <- function(df, ...) {
     col <- intersect(c(...), names(df))[1]
@@ -395,98 +411,223 @@ server <- function(input, output, session) {
     v <- trimws(as.character(df[[col]]))
     sort(unique(v[!is.na(v) & nchar(v) > 0 & v != "NA"]))
   }
-
+  
+  # Helper: pull the last team out of "OAK,BOS" / "OAK/BOS" / "OAK|BOS"
+  last_team <- function(x) {
+    parts <- strsplit(trimws(as.character(x %||% "")), "[,/|]")[[1]]
+    parts <- trimws(parts[nchar(trimws(parts)) > 0])
+    if (length(parts) == 0) NA_character_ else parts[length(parts)]
+  }
+  
   # Populate filter dropdowns (fires once when Leaderboard tab is first opened)
   observeEvent(input$app_tabs, {
     req(input$app_tabs == "leaderboard")
     df <- lb_bat_r()
     if (!is.null(df) && is.data.frame(df)) {
-      teams <- bref_col(df, "Team","Tm","team","tm")
-      pos_raw <- bref_col(df, "pos","Pos","position","pos_","Pos.")
-      pos_v <- sort(unique(trimws(unlist(strsplit(paste(pos_raw,collapse=","),"[,/|]")))))
-      pos_v <- pos_v[nchar(pos_v) > 0 & pos_v != "NA"]
-      updateSelectInput(session,"lb_hit_team", choices=c("All Teams"="ALL", setNames(teams,teams)))
-      updateSelectInput(session,"lb_hit_pos",  choices=c("All Positions"="ALL", setNames(pos_v,pos_v)))
+      # For multi-team players ("OAK,BOS") pull individual teams into the dropdown
+      team_col <- intersect(c("Team","Tm","team","tm"), names(df))[1]
+      teams <- if (!is.na(team_col)) {
+        all_t <- as.character(df[[team_col]])
+        parts <- unlist(strsplit(paste(all_t, collapse=","), "[,/|]"))
+        sort(unique(trimws(parts[!is.na(parts) & nchar(trimws(parts))>0])))
+      } else character(0)
+      
+      # Position: bref_daily_batter omits Pos entirely; .augment_with_war
+      # now adds it from FanGraphs.  Common values: "OF","1B","SS","2B/3B"
+      pos_col <- intersect(
+        c("Pos","pos","position","pos_","Pos.","Pos Summary","POS","Position"),
+        names(df))[1]
+      pos_v <- if (!is.na(pos_col)) {
+        raw   <- as.character(df[[pos_col]])
+        parts <- unlist(strsplit(paste(raw, collapse=","), "[,/|]"))
+        parts <- trimws(parts)
+        parts <- parts[nchar(parts) > 0 & parts != "NA" & parts != "P"]
+        sort(unique(parts))
+      } else character(0)
+      if (length(pos_v) == 0) {
+        message("  No position values found. pos_col=", pos_col %||% "NA",
+                "  columns=", paste(head(names(df), 25), collapse=","))
+      } else {
+        message("  Position dropdown choices: ", paste(pos_v, collapse=", "))
+      }
+      
+      updateSelectInput(session,"lb_hit_team",
+                        choices = c("All Teams"="ALL", setNames(teams, teams)))
+      updateSelectInput(session,"lb_hit_pos",
+                        choices = c("All Positions"="ALL", setNames(pos_v, pos_v)))
     }
     df2 <- lb_pit_r()
     if (!is.null(df2) && is.data.frame(df2)) {
-      teams2 <- bref_col(df2, "Team","Tm","team","tm")
-      updateSelectInput(session,"lb_pit_team", choices=c("All Teams"="ALL", setNames(teams2,teams2)))
+      pt_col <- intersect(c("Team","Tm","team","tm"), names(df2))[1]
+      teams2 <- if (!is.na(pt_col)) {
+        all_t <- as.character(df2[[pt_col]])
+        parts <- unlist(strsplit(paste(all_t, collapse=","), "[,/|]"))
+        sort(unique(trimws(parts[!is.na(parts) & nchar(trimws(parts))>0])))
+      } else character(0)
+      updateSelectInput(session,"lb_pit_team",
+                        choices = c("All Teams"="ALL", setNames(teams2, teams2)))
     }
   }, ignoreInit=TRUE)
-
+  
   # ── Hitter leaderboard DT ─────────────────────────────────────────────────
   output$hitter_lb_dt <- DT::renderDT({
     req(input$app_tabs == "leaderboard")
     df <- lb_bat_r(); req(!is.null(df), is.data.frame(df))
-
+    
     tf <- input$lb_hit_team %||% "ALL"
     pf <- input$lb_hit_pos  %||% "ALL"
     mp <- max(0, input$lb_hit_pa %||% 50)
-
+    
     team_col <- intersect(c("Team","Tm","team","tm"), names(df))[1]
-    if (!is.na(team_col) && tf != "ALL")
-      df <- df[!is.na(df[[team_col]]) & df[[team_col]] == tf, ]
-
-    pos_col <- intersect(c("pos","Pos","position","pos_","Pos."), names(df))[1]
+    # Team filter: a player matches if the requested team appears anywhere
+    # in their comma-separated Team list (handles traded players).
+    if (!is.na(team_col) && tf != "ALL") {
+      keep_rows <- vapply(as.character(df[[team_col]]), function(x) {
+        parts <- trimws(strsplit(x %||% "","[,/|]")[[1]])
+        tf %in% parts
+      }, logical(1))
+      df <- df[keep_rows, ]
+    }
+    
+    pos_col <- intersect(
+      c("pos","Pos","position","pos_","Pos.","Pos Summary","POS","Position"),
+      names(df))[1]
     if (!is.na(pos_col) && pf != "ALL")
       df <- df[grepl(pf, as.character(df[[pos_col]] %||% ""), fixed=TRUE), ]
-
+    
     pa_col <- intersect(c("PA","pa"), names(df))[1]
     if (!is.na(pa_col))
       df <- df[suppressWarnings(as.numeric(df[[pa_col]])) >= mp, ]
-
-    keep <- intersect(c("Name","Team","pos","G","PA","AB","HR","RBI","SB",
-                        "BA","OBP","SLG","OPS","OPS_plus","WAR"), names(df))
+    
+    # Display: collapse multi-team strings to the LAST team
+    if (!is.na(team_col)) {
+      df[[team_col]] <- vapply(as.character(df[[team_col]]), function(x) {
+        parts <- trimws(strsplit(x %||% "","[,/|]")[[1]])
+        parts <- parts[nchar(parts) > 0]
+        if (length(parts) == 0) NA_character_ else parts[length(parts)]
+      }, character(1))
+    }
+    
+    keep <- intersect(c("Name","Team","Tm","pos","Pos","G","PA","AB","HR","RBI","SB",
+                        "BA","AVG","OBP","SLG","OPS","OPS_plus","OPS+","WAR","bWAR"),
+                      names(df))
     if (length(keep) == 0) keep <- names(df)[seq_len(min(12, ncol(df)))]
+    # Carry mlb_id along as a hidden final column for the row-click handler
+    has_pid <- "mlb_id" %in% names(df)
+    if (has_pid) keep <- c(keep, "mlb_id")
     df <- df[, keep, drop=FALSE]
-    names(df) <- sub("OPS_plus","OPS+", sub("^pos$","Pos", names(df)))
-
+    names(df) <- sub("OPS_plus","OPS+", sub("^pos$","Pos", sub("^Tm$","Team", names(df))))
+    
     war_idx <- which(names(df) == "WAR") - 1L  # 0-based for DT
     ops_idx <- which(names(df) == "OPS+") - 1L
-
+    pid_idx <- if (has_pid) which(names(df) == "mlb_id") - 1L else integer(0)
+    
+    row_cb <- if (has_pid) DT::JS(
+      sprintf("function(row, data) {
+        var pid = data[%d];
+        if (pid && pid !== 'NA' && pid !== '' && pid !== 'null') {
+          $(row).css('cursor','pointer').on('click', function() {
+            Shiny.setInputValue('player_click',
+              { id: parseInt(pid, 10), name: data[0] },
+              { priority: 'event' });
+          });
+        }
+      }", pid_idx)
+    ) else NULL
+    
+    dt_opts <- list(dom="t", pageLength=100, scrollX=TRUE,
+                    order=if(length(war_idx)>0) list(list(war_idx,"desc")) else list())
+    if (length(pid_idx) > 0)
+      dt_opts$columnDefs <- list(list(visible=FALSE, targets=pid_idx))
+    if (!is.null(row_cb)) dt_opts$rowCallback <- row_cb
+    
     dt <- DT::datatable(df,
-      rownames=FALSE, class="table-dark compact cell-border",
-      options=list(dom="t", pageLength=100, scrollX=TRUE,
-        order=if(length(war_idx)>0) list(list(war_idx,"desc")) else list())
+                        rownames=FALSE, class="table-dark compact cell-border",
+                        options=dt_opts
     )
     if (length(ops_idx) > 0) dt <- dt %>% DT::formatStyle("OPS+", color="#60a5fa", fontWeight="bold")
-    if (length(war_idx) > 0) dt <- dt %>% DT::formatStyle("WAR",  color="#4ade80", fontWeight="bold")
+    if (length(war_idx) > 0) {
+      dt <- dt %>% DT::formatStyle("WAR",
+                                   color = DT::styleInterval(0, c("#f87171", "#4ade80")),
+                                   fontWeight = "bold"
+      )
+    }
     dt
   }, server=FALSE)
-
+  
   # ── Pitcher leaderboard DT ────────────────────────────────────────────────
   output$pitcher_lb_dt <- DT::renderDT({
     req(input$app_tabs == "leaderboard")
     df <- lb_pit_r(); req(!is.null(df), is.data.frame(df))
-
+    
     tf  <- input$lb_pit_team %||% "ALL"
     mip <- max(0, input$lb_pit_ip %||% 10)
-
+    
     team_col <- intersect(c("Team","Tm","team","tm"), names(df))[1]
-    if (!is.na(team_col) && tf != "ALL")
-      df <- df[!is.na(df[[team_col]]) & df[[team_col]] == tf, ]
-
+    if (!is.na(team_col) && tf != "ALL") {
+      keep_rows <- vapply(as.character(df[[team_col]]), function(x) {
+        parts <- trimws(strsplit(x %||% "","[,/|]")[[1]])
+        tf %in% parts
+      }, logical(1))
+      df <- df[keep_rows, ]
+    }
+    
     ip_col <- intersect(c("IP","ip"), names(df))[1]
     if (!is.na(ip_col))
       df <- df[suppressWarnings(as.numeric(df[[ip_col]])) >= mip, ]
-
-    keep <- intersect(c("Name","Team","G","GS","W","L","SV","IP",
-                        "ERA","WHIP","SO","BB","HR","WAR"), names(df))
+    
+    # Display: collapse multi-team strings to the LAST team
+    if (!is.na(team_col)) {
+      df[[team_col]] <- vapply(as.character(df[[team_col]]), function(x) {
+        parts <- trimws(strsplit(x %||% "","[,/|]")[[1]])
+        parts <- parts[nchar(parts) > 0]
+        if (length(parts) == 0) NA_character_ else parts[length(parts)]
+      }, character(1))
+    }
+    
+    keep <- intersect(c("Name","Team","Tm","G","GS","W","L","SV","IP",
+                        "ERA","WHIP","SO","BB","HR","WAR","bWAR"), names(df))
     if (length(keep) == 0) keep <- names(df)[seq_len(min(12, ncol(df)))]
+    has_pid <- "mlb_id" %in% names(df)
+    if (has_pid) keep <- c(keep, "mlb_id")
     df <- df[, keep, drop=FALSE]
-
+    names(df) <- sub("^Tm$","Team", names(df))
+    
     war_idx <- which(names(df) == "WAR") - 1L
-
+    pid_idx <- if (has_pid) which(names(df) == "mlb_id") - 1L else integer(0)
+    
+    row_cb <- if (has_pid) DT::JS(
+      sprintf("function(row, data) {
+        var pid = data[%d];
+        if (pid && pid !== 'NA' && pid !== '' && pid !== 'null') {
+          $(row).css('cursor','pointer').on('click', function() {
+            Shiny.setInputValue('pitcher_profile_click',
+              { id: parseInt(pid, 10), name: data[0] },
+              { priority: 'event' });
+          });
+        }
+      }", pid_idx)
+    ) else NULL
+    
+    dt_opts <- list(dom="t", pageLength=100, scrollX=TRUE,
+                    order=if(length(war_idx)>0) list(list(war_idx,"desc")) else list())
+    if (length(pid_idx) > 0)
+      dt_opts$columnDefs <- list(list(visible=FALSE, targets=pid_idx))
+    if (!is.null(row_cb)) dt_opts$rowCallback <- row_cb
+    
     dt <- DT::datatable(df,
-      rownames=FALSE, class="table-dark compact cell-border",
-      options=list(dom="t", pageLength=100, scrollX=TRUE,
-        order=if(length(war_idx)>0) list(list(war_idx,"desc")) else list())
+                        rownames=FALSE, class="table-dark compact cell-border",
+                        options=dt_opts
     )
-    if (length(war_idx) > 0) dt <- dt %>% DT::formatStyle("WAR", color="#4ade80", fontWeight="bold")
+    if (length(war_idx) > 0) {
+      dt <- dt %>% DT::formatStyle("WAR",
+                                   color = DT::styleInterval(0, c("#f87171", "#4ade80")),
+                                   fontWeight = "bold"
+      )
+    }
     dt
   }, server=FALSE)
-
+  
   # ── Dynamic DT outputs for each game ─────────────────────────────────────
   observe({
     gms <- games_r(); bxs <- boxscores_r()
@@ -500,27 +641,27 @@ server <- function(input, output, session) {
         away_t2  <- top2_by_ops(away_bat);    home_t2  <- top2_by_ops(home_bat)
         output[[paste0("away_bat_",ii)]] <- DT::renderDT(make_dt(away_bat,away_t2), server=FALSE)
         output[[paste0("home_bat_",ii)]] <- DT::renderDT(make_dt(home_bat,home_t2), server=FALSE)
-        output[[paste0("away_pit_",ii)]] <- DT::renderDT(make_dt(away_pit), server=FALSE)
-        output[[paste0("home_pit_",ii)]] <- DT::renderDT(make_dt(home_pit), server=FALSE)
+        output[[paste0("away_pit_",ii)]] <- DT::renderDT(make_dt(away_pit, kind="pitching"), server=FALSE)
+        output[[paste0("home_pit_",ii)]] <- DT::renderDT(make_dt(home_pit, kind="pitching"), server=FALSE)
       })
     })
   })
-
+  
   # ── Games UI ──────────────────────────────────────────────────────────────
   output$games_ui <- renderUI({
     s <- sched_r()
     if (is.null(s))
       return(div(class="alert alert-warning","⚠ Could not load today's schedule."))
-
+    
     reg <- tryCatch(
       s %>% filter(game_type=="R") %>% distinct(game_pk,.keep_all=TRUE),
       error=function(e) NULL
     )
     if (is.null(reg) || nrow(reg)==0)
       return(div(class="alert alert-info","ℹ No regular-season games today."))
-
+    
     gms <- games_r(); bxs <- boxscores_r()
-
+    
     panels <- lapply(seq_len(nrow(gms)), function(i) {
       g     <- gms[i,]
       away  <- g$teams_away_team_name %||% "Away"
@@ -537,33 +678,33 @@ server <- function(input, output, session) {
         dt <- g$game_datetime; if(is.na(dt)) return("")
         format(lubridate::with_tz(lubridate::ymd_hms(dt),"America/New_York"),"%I:%M %p ET")
       }, error=function(e) "")
-
+      
       tabPanel(sprintf("%s @ %s", away, home), value=paste0("gtab_",i),
-        div(class="game-container",
-          score_display(away, home, as_, hs_, state, gtime, venue,
-                        away_prob, home_prob, away_id, home_id),
-          div(class="top2-legend",
-            div(class="top2-legend-dot"), "Gold rows = Top 2 hitters by today's OPS"),
-          tabsetPanel(type="tabs",
-            tabPanel("🏏  Batting",
-              fluidRow(
-                column(6, sec_hdr("▶", paste(away,"Batters")), DT::DTOutput(paste0("away_bat_",i))),
-                column(6, sec_hdr("▶", paste(home,"Batters")), DT::DTOutput(paste0("home_bat_",i)))
-              )
-            ),
-            tabPanel("⚾  Pitching",
-              fluidRow(
-                column(6, sec_hdr("▶", paste(away,"Pitchers")), DT::DTOutput(paste0("away_pit_",i))),
-                column(6, sec_hdr("▶", paste(home,"Pitchers")), DT::DTOutput(paste0("home_pit_",i)))
-              )
-            )
-          )
-        )
+               div(class="game-container",
+                   score_display(away, home, as_, hs_, state, gtime, venue,
+                                 away_prob, home_prob, away_id, home_id),
+                   div(class="top2-legend",
+                       div(class="top2-legend-dot"), "Gold rows = Top 2 hitters by today's OPS"),
+                   tabsetPanel(type="tabs",
+                               tabPanel("🏏  Batting",
+                                        fluidRow(
+                                          column(6, sec_hdr("▶", paste(away,"Batters")), DT::DTOutput(paste0("away_bat_",i))),
+                                          column(6, sec_hdr("▶", paste(home,"Batters")), DT::DTOutput(paste0("home_bat_",i)))
+                                        )
+                               ),
+                               tabPanel("⚾  Pitching",
+                                        fluidRow(
+                                          column(6, sec_hdr("▶", paste(away,"Pitchers")), DT::DTOutput(paste0("away_pit_",i))),
+                                          column(6, sec_hdr("▶", paste(home,"Pitchers")), DT::DTOutput(paste0("home_pit_",i)))
+                                        )
+                               )
+                   )
+               )
       )
     })
     do.call(tabsetPanel, c(list(type="tabs", id="game_tabs"), panels))
   })
-
+  
   # ── Monthly leaders UI ────────────────────────────────────────────────────
   output$monthly_ui <- renderUI({
     mo <- monthly_r(); s <- sched_r()
@@ -571,16 +712,16 @@ server <- function(input, output, session) {
       return(div(class="alert alert-info","ℹ Load today's schedule first."))
     if (is.null(mo))
       return(div(class="alert alert-warning","⚠ Statcast data unavailable — try again shortly."))
-
+    
     teams_full <- sort(unique(c(s$teams_away_team_name, s$teams_home_team_name)))
     teams_full <- teams_full[!is.na(teams_full)]
     teams_abb  <- name_to_abb(teams_full)
-
+    
     cards <- compact(lapply(seq_along(teams_full), function(ti) {
       top2 <- mo %>% filter(batter_team == teams_abb[ti]) %>%
-                     slice_max(OPS, n=2, with_ties=FALSE)
+        slice_max(OPS, n=2, with_ties=FALSE)
       if (nrow(top2)==0) return(NULL)
-
+      
       pcards <- lapply(seq_len(nrow(top2)), function(j) {
         r     <- top2[j,]
         war_v <- NA_real_
@@ -593,24 +734,24 @@ server <- function(input, output, session) {
         player_stat_card(j, r$player_name, r$G, r$AB, r$AVG, r$OBP, r$SLG, r$OPS, war_v)
       })
       div(class="monthly-card",
-        div(class="monthly-card-hdr", teams_full[ti]),
-        tagList(pcards)
+          div(class="monthly-card-hdr", teams_full[ti]),
+          tagList(pcards)
       )
     }))
-
+    
     if (length(cards)==0)
       return(div(class="alert alert-warning",
-        paste0("⚠ No qualified hitters (min ",MIN_AB," AB). Try later in the month.")))
+                 paste0("⚠ No qualified hitters (min ",MIN_AB," AB). Try later in the month.")))
     div(class="monthly-grid", tagList(cards))
   })
-
+  
   # ── Player season-stats modal (hitters + pitchers) ────────────────────────
   output$player_modal_content <- renderUI({
     req(input$player_click)
     data <- fetch_player_season_stats(as.integer(input$player_click$id))
     build_player_modal_ui(data)
   })
-
+  
   observeEvent(input$player_click, {
     req(input$player_click)
     showModal(modalDialog(
@@ -620,46 +761,79 @@ server <- function(input, output, session) {
       uiOutput("player_modal_content")
     ))
   })
-
-  # ── Pitcher profile modal (movement + strike zone + stats) ─────────────────
+  
+  # ── Pitcher profile modal (movement + heatmap tabs + stats) ────────────────
   output$pitcher_movement_plot <- renderPlot({
     req(input$pitcher_profile_click)
-    create_movement_plot(fetch_pitcher_movement(as.integer(input$pitcher_profile_click$id)))
+    mov_full <- fetch_pitcher_movement(as.integer(input$pitcher_profile_click$id))
+    create_movement_plot(if (is.null(mov_full)) NULL else mov_full$summary)
   }, bg="#0d1117")
-
-  output$pitcher_strike_zone_plot <- renderPlot({
-    req(input$pitcher_profile_click)
-    create_strike_zone_plot(fetch_pitcher_movement(as.integer(input$pitcher_profile_click$id)))
-  }, bg="#0d1117")
-
-  output$pitcher_profile_stats <- renderUI({
-    req(input$pitcher_profile_click)
-    data <- fetch_player_season_stats(as.integer(input$pitcher_profile_click$id))
-    build_pitcher_profile_ui(data)
-  })
-
-  observeEvent(input$pitcher_profile_click, {
+  
+  # Tabbed strike-zone heatmap: one tab per pitch type, a single plot output
+  # below reads the active tab via input$hm_tab and renders the heatmap for
+  # the chosen pitch type.
+  output$pitcher_heatmap <- renderPlot({
+    req(input$pitcher_profile_click, input$hm_tab)
     pid  <- as.integer(input$pitcher_profile_click$id)
     data <- fetch_player_season_stats(pid)
-    name <- tryCatch(data$bio$fullName %||% "Pitcher Profile", error=function(e)"Pitcher Profile")
-
+    create_strike_zone_heatmap(data$movement_raw, input$hm_tab)
+  }, bg="#0d1117")
+  
+  # Pitcher modal: open the shell INSTANTLY with the name from the click
+  # event; defer all data-fetching to renderUI/renderPlot so the user sees
+  # the modal pop up immediately while content streams in.
+  observeEvent(input$pitcher_profile_click, {
+    req(input$pitcher_profile_click)
+    name <- input$pitcher_profile_click$name %||% "Pitcher"
     showModal(modalDialog(
-      title=div(style="color:#e6edf3;font-family:'DM Sans',sans-serif;font-weight:800;font-size:1.1rem;",
-        HTML(paste0("\u26be\ufe0f\u2002", name))),
-      size="l", easyClose=TRUE, footer=modalButton("Close"),
-      # Movement + strike zone side by side
-      div(style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:6px;",
-        div(
-          div(class="ms-section-hdr","Pitch Movement"),
-          div(class="plot-wrapper", plotOutput("pitcher_movement_plot", height="300px"))
-        ),
-        div(
-          div(class="ms-section-hdr","Strike Zone (avg location)"),
-          div(class="plot-wrapper", plotOutput("pitcher_strike_zone_plot", height="300px"))
-        )
-      ),
-      uiOutput("pitcher_profile_stats")
+      title = div(style="color:#e6edf3;font-family:'DM Sans',sans-serif;font-weight:800;font-size:1.1rem;",
+                  HTML(paste0("\u26be\ufe0f\u2002", name))),
+      size  = "l", easyClose = TRUE, footer = modalButton("Close"),
+      uiOutput("pitcher_modal_full_ui")
     ))
+  })
+  
+  # Content renders asynchronously after the modal opens.  Memoised
+  # fetch_player_season_stats() means the body, the plot outputs, and the
+  # profile-stats output all share a single set of API calls.
+  output$pitcher_modal_full_ui <- renderUI({
+    req(input$pitcher_profile_click)
+    pid  <- as.integer(input$pitcher_profile_click$id)
+    data <- fetch_player_season_stats(pid)
+    
+    # Build heatmap tabs from the pitcher's actual pitch types
+    mov <- data$movement_data
+    pts <- if (!is.null(mov) && nrow(mov) > 0) as.character(mov$pitch_type) else character(0)
+    pts <- pts[!is.na(pts) & !pts %in% NON_PITCH_TYPES & nchar(pts) > 0]
+    # Order by usage (most-thrown first)
+    if (length(pts) > 0 && "n_pitches" %in% names(mov)) {
+      ord <- order(-mov$n_pitches[match(pts, mov$pitch_type)])
+      pts <- pts[ord]
+    }
+    
+    heatmap_section <- if (length(pts) > 0) {
+      tab_panels <- lapply(pts, function(pt) {
+        tabPanel(title = pitch_full_name(pt), value = pt)
+      })
+      tabset <- do.call(tabsetPanel,
+                        c(list(id = "hm_tab", type = "tabs", selected = pts[1]), tab_panels))
+      tagList(
+        div(class="ms-section-hdr","Pitch Location Heatmap"),
+        tabset,
+        div(class="plot-wrapper", style="margin-top:8px;",
+            plotOutput("pitcher_heatmap", height="340px"))
+      )
+    } else NULL
+    
+    tagList(
+      build_player_modal_ui(data),
+      div(style="margin:14px 0 6px;",
+          div(class="ms-section-hdr","Pitch Movement"),
+          div(class="plot-wrapper", plotOutput("pitcher_movement_plot", height="320px"))
+      ),
+      heatmap_section,
+      build_pitcher_profile_ui(data)
+    )
   })
 }
 

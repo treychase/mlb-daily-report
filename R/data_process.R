@@ -6,12 +6,12 @@ parse_batting <- function(bs, side) {
     ids <- td$batters
     pl  <- td$players
     if (is.null(ids) || is.null(pl)) return(empty_batting())
-
+    
     rows <- compact(lapply(ids, function(pid) {
       p   <- pl[[paste0("ID", pid)]]
       bat <- p$stats$batting
       if (is.null(bat) || is.null(bat$atBats)) return(NULL)
-
+      
       # Game counting stats
       ab_  <- int0(bat$atBats);    h_  <- int0(bat$hits)
       d_   <- int0(bat$doubles);   t_  <- int0(bat$triples)
@@ -22,7 +22,7 @@ parse_batting <- function(bs, side) {
       den_ <- ab_ + bb_ + hbp_ + sf_
       obp_ <- if (den_ > 0) (h_ + bb_ + hbp_) / den_ else NA_real_
       slg_ <- if (ab_  > 0) tb_ / ab_             else NA_real_
-
+      
       # Season slash line: use boxscore seasonStats (zero extra API calls)
       # Falls back to today-only computation if seasonStats is unavailable.
       seas <- tryCatch(p$seasonStats$batting, error = function(e) NULL)
@@ -33,7 +33,7 @@ parse_batting <- function(bs, side) {
         else
           fmt_rate(fallback_val)
       }
-
+      
       tibble(
         .ord      = int0(p$battingOrder),
         Name      = as.character(p$person$fullName %||% "\u2014"),
@@ -54,7 +54,7 @@ parse_batting <- function(bs, side) {
         OPS   = sl("ops", if (!is.na(obp_) && !is.na(slg_)) obp_+slg_ else NA_real_)
       )
     }))
-
+    
     if (!length(rows)) return(empty_batting())
     bind_rows(rows) %>%
       arrange(.ord) %>%
@@ -79,14 +79,25 @@ parse_pitching <- function(bs, side) {
     ids <- td$pitchers
     pl  <- td$players
     if (is.null(ids) || is.null(pl)) return(empty_pitching())
-
+    
     rows <- compact(lapply(ids, function(pid) {
       p   <- pl[[paste0("ID", pid)]]
       pit <- p$stats$pitching
       if (is.null(pit)) return(NULL)
-
+      
+      # Season cumulative ERA (from boxscore seasonStats — zero extra API calls).
+      # Falls back to game ERA, then em-dash.
+      seas <- tryCatch(p$seasonStats$pitching, error = function(e) NULL)
+      season_era <- tryCatch({
+        v <- as.character(seas$era)
+        if (length(v) > 0 && nchar(v) > 0 && !v %in% c("---","-.--","NA","",".---"))
+          v
+        else
+          as.character(pit$era %||% "\u2014")
+      }, error = function(e) as.character(pit$era %||% "\u2014"))
+      
       tibble(
-        Name      = as.character(p$person$fullName %||% "—"),
+        Name      = as.character(p$person$fullName %||% "\u2014"),
         person_id = as.integer(pid),
         IP      = as.character(pit$inningsPitched  %||% "0.0"),
         H       = int0(pit$hits),
@@ -95,12 +106,12 @@ parse_pitching <- function(bs, side) {
         BB      = int0(pit$baseOnBalls),
         SO      = int0(pit$strikeOuts),
         HR      = int0(pit$homeRuns),
-        ERA     = as.character(pit$era %||% "—"),
+        ERA     = season_era,
         Pitches = int0(pit$numberOfPitches),
         Strikes = int0(pit$strikes)
       )
     }))
-
+    
     if (!length(rows)) return(empty_pitching())
     bind_rows(rows) %>% filter(Pitches > 0)
   }, fallback = empty_pitching())
@@ -127,7 +138,7 @@ top2_by_ops <- function(df) {
 
 compute_monthly <- function(sc) {
   if (is.null(sc) || nrow(sc) == 0) return(NULL)
-
+  
   # Guard: statcast CSV columns can shift between versions; ensure required cols exist
   needed <- c("events","inning_topbot","away_team","home_team","game_pk","player_name")
   missing_cols <- setdiff(needed, names(sc))
@@ -135,7 +146,7 @@ compute_monthly <- function(sc) {
     message("Statcast missing columns: ", paste(missing_cols, collapse=", "))
     return(NULL)
   }
-
+  
   pa_evts <- c(
     "single","double","triple","home_run",
     "strikeout","field_out","grounded_into_double_play","force_out",
@@ -147,7 +158,7 @@ compute_monthly <- function(sc) {
     "strikeout","field_out","grounded_into_double_play","force_out",
     "fielders_choice","fielders_choice_out","double_play","triple_play","other_out"
   )
-
+  
   sc %>%
     filter(events %in% pa_evts) %>%
     mutate(batter_team = if_else(inning_topbot == "Top", away_team, home_team)) %>%
@@ -178,4 +189,3 @@ compute_monthly <- function(sc) {
 }
 
 # ── UI helpers ─────────────────────────────────────────────────────────────
-

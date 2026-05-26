@@ -13,6 +13,7 @@ library(lubridate)
 library(purrr)
 library(jsonlite)
 library(memoise)
+library(later)      # for deferred WAR cache pre-warm in server
 
 # ── Globals ────────────────────────────────────────────────────────────────
 
@@ -73,11 +74,11 @@ fmt_prob <- function(name) {
 # Pitch-type accent colours (global so movement plot + profile modal can share it)
 pitch_col <- function(pt) {
   switch(toupper(as.character(pt %||% "")),
-    "FF" = "#ef4444", "SI" = "#f97316", "FC" = "#f59e0b",
-    "SL" = "#3b82f6", "SW" = "#60a5fa", "ST" = "#93c5fd",
-    "CH" = "#22c55e", "FS" = "#14b8a6", "FO" = "#10b981",
-    "CU" = "#a855f7", "KC" = "#9333ea", "CS" = "#7c3aed",
-    "KN" = "#8b949e", "#6e7681"
+         "FF" = "#ef4444", "SI" = "#f97316", "FC" = "#f59e0b",
+         "SL" = "#3b82f6", "SW" = "#60a5fa", "ST" = "#93c5fd",
+         "CH" = "#22c55e", "FS" = "#14b8a6", "FO" = "#10b981",
+         "CU" = "#a855f7", "KC" = "#9333ea", "CS" = "#7c3aed",
+         "KN" = "#8b949e", "#6e7681"
   )
 }
 
@@ -107,3 +108,22 @@ pitch_full_name <- function(pt) {
 
 # Pitch types that are not real pitches (exclude from profile)
 NON_PITCH_TYPES <- c("PO","AB","IN","FA","EP","UN","","NA")
+
+# ── Percentile colour gradient (blue 1 → orange 99) ─────────────────────────
+# Smooth Lab-space interpolation: blue at low percentile, orange at high.
+# Used for the percentile badges in the player & pitcher modals, the
+# slash-line corner dots, and the RV/100 badges.
+# Returns "#8b949e" (neutral grey) for NA / NULL input.
+pct_col <- function(v) {
+  if (is.null(v) || length(v) == 0) return("#8b949e")
+  v <- suppressWarnings(as.numeric(v))
+  if (is.na(v)) return("#8b949e")
+  v <- max(1, min(99, v))
+  t <- (v - 1) / 98              # normalise to 0..1
+  rgb_val <- grDevices::colorRamp(
+    c("#1d4ed8", "#f97316"),     # blue-700 → orange-500
+    space = "Lab"
+  )(t)
+  sprintf("#%02x%02x%02x",
+          round(rgb_val[1]), round(rgb_val[2]), round(rgb_val[3]))
+}
