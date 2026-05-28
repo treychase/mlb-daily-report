@@ -90,9 +90,6 @@ stat_pct <- function(val, worst, best) {
   as.integer(max(1L, min(99L, round((v - worst) / (best - worst) * 98 + 1))))
 }
 
-# --- Schedule ---------------------------------------------------------------
-# Tries multiple approaches for compatibility across baseballr versions
-
 # Full pitch name lookup (abbreviation -> readable name)
 PITCH_FULL_NAMES <- c(
   "FF" = "Four-Seam Fastball", "SI" = "Sinker",           "FC" = "Cutter",
@@ -110,9 +107,11 @@ pitch_full_name <- function(pt) {
 NON_PITCH_TYPES <- c("PO","AB","IN","FA","EP","UN","","NA")
 
 # ── Percentile colour gradient (blue 1 → orange 99) ─────────────────────────
-# Smooth Lab-space interpolation: blue at low percentile, orange at high.
-# Used for the percentile badges in the player & pitcher modals, the
-# slash-line corner dots, and the RV/100 badges.
+# Three-stop ramp through a light-grey midpoint in standard RGB space.
+# "rgb" is the only accepted alternative to "Lab" in grDevices::colorRamp;
+# "sRGB" is NOT a valid value and throws a match.arg error at runtime.
+# The grey midpoint (#cbd5e1) keeps the blend clean — direct blue→orange
+# in either rgb or Lab space passes through violet/purple.
 # Returns "#8b949e" (neutral grey) for NA / NULL input.
 pct_col <- function(v) {
   if (is.null(v) || length(v) == 0) return("#8b949e")
@@ -121,8 +120,8 @@ pct_col <- function(v) {
   v <- max(1, min(99, v))
   t <- (v - 1) / 98              # normalise to 0..1
   rgb_val <- grDevices::colorRamp(
-    c("#1d4ed8", "#f97316"),     # blue-700 → orange-500
-    space = "Lab"
+    c("#1d4ed8", "#cbd5e1", "#f97316"),  # blue-700 → slate-300 → orange-500
+    space = "rgb"                        # "rgb" or "Lab" only; "sRGB" is invalid
   )(t)
   sprintf("#%02x%02x%02x",
           round(rgb_val[1]), round(rgb_val[2]), round(rgb_val[3]))

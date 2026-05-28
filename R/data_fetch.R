@@ -1,7 +1,6 @@
 # ── Data Fetching Functions ────────────────────────────────────────────────
 
 fetch_schedule <- function() {
-  # Attempt 1: newer baseballr (start_date / end_date params)
   s <- tryCatch(
     suppressWarnings(
       mlb_schedule(start_date = TODAY_STR, end_date = TODAY_STR, sport_id = 1)
@@ -10,21 +9,18 @@ fetch_schedule <- function() {
   )
   if (!is.null(s) && nrow(s) > 0) return(s)
   
-  # Attempt 2: single date= param (some baseballr builds)
   s <- tryCatch(
     mlb_schedule(date = TODAY_STR, sport_id = 1),
     error = function(e) NULL
   )
   if (!is.null(s) && nrow(s) > 0) return(s)
   
-  # Attempt 3: date= without sport_id
   s <- tryCatch(
     mlb_schedule(date = TODAY_STR),
     error = function(e) NULL
   )
   if (!is.null(s) && nrow(s) > 0) return(s)
   
-  # Attempt 4: direct MLB Stats API JSON -- always works
   message("mlb_schedule() failed; falling back to direct MLB Stats API...")
   safe({
     url  <- paste0(
@@ -66,9 +62,6 @@ fetch_schedule <- function() {
 }
 
 # --- Boxscore ---------------------------------------------------------------
-# mlb_boxscore() is absent in many baseballr builds; call the API directly.
-# The response structure matches what parse_batting/parse_pitching expect.
-
 fetch_boxscore <- function(game_pk) {
   safe({
     url <- paste0("https://statsapi.mlb.com/api/v1/game/",
@@ -86,11 +79,7 @@ fetch_linescore <- function(game_pk) {
   })
 }
 
-# --- Batting ----------------------------------------------------------------
-
 # ── try_bref_war() ────────────────────────────────────────────────────────
-# Pulls bref_war_bat() / bref_war_pitch() and filters to the current season.
-# Returns a small df with (mlb_id, Name, WAR) or NULL on any failure.
 .try_bref_war <- function(is_pitcher = FALSE) {
   tryCatch({
     w <- if (is_pitcher) baseballr::bref_war_pitch() else baseballr::bref_war_bat()
@@ -141,19 +130,15 @@ fetch_linescore <- function(game_pk) {
 }
 
 # ── try_fg_war() ──────────────────────────────────────────────────────────
-# FanGraphs leaderboard fallback (fWAR).  baseballr renamed the functions
-# across versions, so we attempt both signatures.
 .try_fg_war <- function(is_pitcher = FALSE) {
   yr_i <- as.integer(format(TODAY, "%Y"))
   message("  Attempting FanGraphs leaderboard (", yr_i, ")...")
   
   fg <- NULL
-  # Modern baseballr (v1.6+): fg_*_leaders(startseason, endseason, ...)
   if (is.null(fg)) fg <- tryCatch({
     if (is_pitcher) baseballr::fg_pitcher_leaders(startseason = yr_i, endseason = yr_i, qual = 0)
     else            baseballr::fg_batter_leaders (startseason = yr_i, endseason = yr_i, qual = 0)
   }, error = function(e) { message("  fg_*_leaders(startseason=): ", conditionMessage(e)); NULL })
-  # Older baseballr: fg_*_leaders(x, y, qual)
   if (is.null(fg)) fg <- tryCatch({
     if (is_pitcher) baseballr::fg_pitch_leaders(x = yr_i, y = yr_i, qual = 0)
     else            baseballr::fg_bat_leaders  (x = yr_i, y = yr_i, qual = 0)
@@ -169,7 +154,6 @@ fetch_linescore <- function(game_pk) {
   nm_col <- intersect(c("PlayerName","Name","playerName","player_name","Player"), names(fg))[1]
   id_col <- intersect(c("xMLBAMID","mlbamid","MLBAMID","mlb_id","mlbid"),         names(fg))[1]
   w_col  <- names(fg)[tolower(names(fg)) %in% c("war","fwar","war_fg")][1]
-  # FanGraphs sometimes calls it "Pos" / "position" / "primary_position"
   pos_col <- names(fg)[tolower(names(fg)) %in%
                          c("pos","position","primary_position","primarypos")][1]
   
@@ -189,7 +173,6 @@ fetch_linescore <- function(game_pk) {
   out <- out[!is.na(out$WAR), ]
   if (nrow(out) == 0) return(NULL)
   
-  # For traded players FG may produce two rows; keep WAR sum + last Pos
   if (any(!is.na(out$mlb_id))) {
     out %>% dplyr::group_by(mlb_id, Name) %>%
       dplyr::summarise(WAR = sum(WAR, na.rm=TRUE),
@@ -204,53 +187,36 @@ fetch_linescore <- function(game_pk) {
 }
 
 # ── compute_war_estimate() ────────────────────────────────────────────────
-# From-scratch WAR approximation when neither BBRef nor FanGraphs has 2026
-# data yet (very common in April–May).  Uses only the season stats we
-# already fetched from the MLB Stats API.  Output is labeled "WAR (est.)"
-# in the UI so users know it's our calculation, not an external source.
-#
-# Hitters: wRAA (from wOBA, 2024 weights) + baserunning + positional adj
-#          + replacement level, all divided by ~10 runs/win.
-# Pitchers: FIP-based runs above average + replacement, ~10 runs/win.
 .compute_war_estimate <- function(stats, position = "OF", is_pitcher = FALSE) {
   if (is.null(stats)) return(NA_real_)
   num <- function(x) suppressWarnings(as.numeric(x %||% 0))
   
   if (!is_pitcher) {
-    # ── HITTER WAR estimate ─────────────────────────────────────────────
     ab  <- num(stats$atBats);     h   <- num(stats$hits)
     d   <- num(stats$doubles);    tri <- num(stats$triples)
     hr  <- num(stats$homeRuns);   bb  <- num(stats$baseOnBalls)
     hbp <- num(stats$hitByPitch); sf  <- num(stats$sacFlies)
     sb  <- num(stats$stolenBases); cs <- num(stats$caughtStealing)
     pa  <- ab + bb + hbp + sf
-    if (pa < 25) return(NA_real_)   # too few PAs to be meaningful
+    if (pa < 25) return(NA_real_)
     
     single <- max(0, h - d - tri - hr)
-    # 2024 linear weights & league constants
     woba <- (0.690*bb + 0.722*hbp + 0.888*single +
                1.271*d  + 1.616*tri  + 2.101*hr) / max(1, pa)
-    wraa <- ((woba - 0.317) / 1.21) * pa            # wRAA: runs vs avg
-    bsr  <- (sb * 0.20) - (cs * 0.43)                # baserunning runs
+    wraa <- ((woba - 0.317) / 1.21) * pa
+    bsr  <- (sb * 0.20) - (cs * 0.43)
     
-    # Positional adjustment (FanGraphs scale, prorated by PA / 600)
     pos_adj_per_600 <- switch(toupper(position),
                               "C"  =  9, "SS" =  7, "CF" =  3, "2B" =  3, "3B" =  2,
                               "LF" = -7, "RF" = -7, "OF" = -3, "1B" = -9, "DH" = -15,
                               0)
     pos_adj <- (pa / 600) * pos_adj_per_600
-    
-    # Replacement level: ~20 runs per 600 PA
     rep_lvl <- (pa / 600) * 20
-    
-    # Defensive runs unavailable here — treat as 0
     total_runs <- wraa + bsr + pos_adj + rep_lvl
-    round(total_runs / 10, 1)                        # ~10 runs per win
+    round(total_runs / 10, 1)
     
   } else {
-    # ── PITCHER WAR estimate ────────────────────────────────────────────
     ip_str <- as.character(stats$inningsPitched %||% "0.0")
-    # MLB IP format "53.2" means 53 and 2/3 innings, not 53.2 decimal.
     ip <- tryCatch({
       parts  <- strsplit(ip_str, "\\.")[[1]]
       whole  <- suppressWarnings(as.numeric(parts[1])) %||% 0
@@ -262,13 +228,9 @@ fetch_linescore <- function(game_pk) {
     bb  <- num(stats$baseOnBalls);  so <- num(stats$strikeOuts)
     hr  <- num(stats$homeRuns);     hbp <- num(stats$hitByPitch)
     
-    # FIP, with constant chosen to roughly align with league ERA
     fip   <- ((13*hr) + (3*(bb + hbp)) - (2*so)) / ip + 3.10
     lg_fip <- 4.20
-    
-    # Runs above average (negative FIP-lg = better than average)
     raa <- (lg_fip - fip) * (ip / 9)
-    # Replacement level: ~0.5 runs/IP above replacement → 0.5 * 9 = 4.5 per 9 IP
     rep_lvl <- 0.5 * ip
     total_runs <- raa + rep_lvl
     round(total_runs / 10, 1)
@@ -276,16 +238,9 @@ fetch_linescore <- function(game_pk) {
 }
 
 # ── augment_with_war() ────────────────────────────────────────────────────
-# Multi-source WAR augmentation:
-#   1.  daily df already has a WAR column                       (BBRef)
-#   2.  bref_war_bat() / bref_war_pitch() filtered to current   (BBRef)
-#   3.  fg_*_leaders() filtered to current season               (FanGraphs)
-# Tags the returned df with attr(., "war_source") so the UI can label
-# "bWAR" vs "fWAR" appropriately.
 .augment_with_war <- function(df, is_pitcher = FALSE) {
   if (is.null(df) || nrow(df) == 0) return(df)
   
-  # ── Strategy 1: WAR is already in the daily table ───────────────────────
   existing <- names(df)[tolower(names(df)) %in% c("war","war_total","bwar")][1]
   src      <- NA_character_
   if (!is.na(existing)) {
@@ -293,11 +248,9 @@ fetch_linescore <- function(game_pk) {
     if (existing != "WAR") df[["WAR"]] <- df[[existing]]
     src <- "bref"
   } else {
-    # ── Strategy 2: BBRef war_daily_bat / war_daily_pitch ────────────────
     message("  No WAR in daily table. Attempting Baseball Reference...")
     war_df <- .try_bref_war(is_pitcher)
     src    <- "bref"
-    # ── Strategy 3: FanGraphs leaderboard (also brings Pos + mlb_id) ────
     if (is.null(war_df) || nrow(war_df) == 0) {
       war_df <- .try_fg_war(is_pitcher)
       src    <- "fangraphs"
@@ -309,7 +262,6 @@ fetch_linescore <- function(game_pk) {
       df_name_col <- intersect(c("Name","player_name","bbref_id"), names(df))[1]
       if (!is.na(df_name_col) && df_name_col != "Name") df[["Name"]] <- df[[df_name_col]]
       if ("Name" %in% names(df)) {
-        # Keep mlb_id + Pos in the join (we need both for click handler + filter)
         df <- dplyr::left_join(df, war_df, by = "Name")
         n_matched <- sum(!is.na(df$WAR))
         message("  \u2713 Joined WAR for ", n_matched, "/", nrow(df),
@@ -320,8 +272,6 @@ fetch_linescore <- function(game_pk) {
     }
   }
   
-  # ── Always try to enrich with FG position info (for hitters), even when
-  # bref daily already provided WAR.  bref daily doesn't expose Pos.
   has_pos <- "Pos" %in% names(df) && any(!is.na(df$Pos) & nchar(as.character(df$Pos)) > 0)
   has_pid <- "mlb_id" %in% names(df) && any(!is.na(df$mlb_id))
   
@@ -330,9 +280,7 @@ fetch_linescore <- function(game_pk) {
     fg_extra <- .try_fg_war(is_pitcher = FALSE)
     if (!is.null(fg_extra) && nrow(fg_extra) > 0 && "Name" %in% names(df)) {
       keep_cols <- intersect(c("Name","mlb_id","Pos"), names(fg_extra))
-      # Drop any columns we already have to avoid duplicates from left_join
       fg_extra <- fg_extra[, keep_cols, drop = FALSE]
-      # Rename to .fg suffix so we can coalesce manually
       names(fg_extra)[names(fg_extra) == "mlb_id"] <- "mlb_id_fg"
       names(fg_extra)[names(fg_extra) == "Pos"]    <- "Pos_fg"
       df <- dplyr::left_join(df, fg_extra, by = "Name")
@@ -413,12 +361,15 @@ fetch_lb_pitchers_raw <- function() {
 fetch_lb_pitchers <- memoise::memoise(fetch_lb_pitchers_raw)
 
 # --- Statcast movement data (pitcher, grouped by pitch type) ------------------
+# Downloads the full raw-pitch CSV from Baseball Savant (~16 MB).
+# Memoised so repeat clicks are instant; the first fetch is the expensive one.
+# This is intentionally NOT called inside fetch_player_season_stats so the
+# pitcher modal stats appear immediately — the movement plot and heatmap
+# renderPlot outputs call it directly in the background.
 
 fetch_pitcher_movement_raw <- function(person_id) {
   safe({
     season  <- format(TODAY, "%Y")
-    # type=details returns raw pitches with consistent column names (pfx_x, pfx_z,
-    # release_speed, release_spin_rate).  We aggregate to per-pitch-type in R.
     mov_url <- paste0(
       "https://baseballsavant.mlb.com/statcast_search/csv?all=true",
       "&player_id=", as.integer(person_id),
@@ -465,7 +416,6 @@ fetch_pitcher_movement_raw <- function(person_id) {
     agg$velo           <- agg$release_speed
     agg$spin_rate      <- agg$release_spin_rate
     
-    # ── Raw individual pitches for the per-pitch-type strike-zone heatmap ──
     raw_pitches <- df %>%
       dplyr::filter(!is.na(pitch_type), nchar(as.character(pitch_type)) > 0) %>%
       dplyr::transmute(
@@ -481,21 +431,15 @@ fetch_pitcher_movement_raw <- function(person_id) {
     )
   })
 }
-# Memoised so repeated clicks on the same pitcher are instant
 fetch_pitcher_movement <- memoise::memoise(fetch_pitcher_movement_raw)
 
-# Cache for WAR values — populated when leaderboard is fetched,
-# consulted when player modal opens (avoids triggering a slow bref fetch).
+# Cache for WAR values — populated when leaderboard is fetched
 .war_cache <- new.env(parent = emptyenv())
 .war_cache$batters  <- NULL
 .war_cache$pitchers <- NULL
 
 
 # --- Monthly Statcast -------------------------------------------------------
-# statcast_search() has a hardcoded 92-name vector; Savant now returns 118 cols.
-# Read the CSV directly so column names come straight from the actual header.
-# Wrapped in memoise() so the 16 MB download only happens once per session.
-
 fetch_monthly_sc_raw <- function() {
   message("Fetching monthly Statcast (", MONTH_START, " -> ", TODAY_STR, ")...")
   safe({
@@ -517,6 +461,14 @@ fetch_monthly_sc_raw <- function() {
 fetch_monthly_sc <- memoise::memoise(fetch_monthly_sc_raw)
 
 # --- Player season-stats (for click-through modal) --------------------------
+# ── Speed note ───────────────────────────────────────────────────────────────
+# fetch_pitcher_movement() (the 16 MB Savant CSV) is intentionally NOT called
+# here.  Removing it cuts modal open time from ~10 s to <1 s on first click.
+# The movement scatter and heatmap are rendered by independent renderPlot
+# outputs that call fetch_pitcher_movement() directly; since it is memoised,
+# subsequent clicks are instant regardless of which output triggers first.
+# build_pitcher_profile_ui() falls back to pitch_arsenal for the pitch
+# characteristic cards (velo + spin still shown; break shown when available).
 
 fetch_player_season_stats_raw <- function(person_id) {
   safe({
@@ -538,9 +490,6 @@ fetch_player_season_stats_raw <- function(person_id) {
     pit_data <- jsonlite::fromJSON(pit_url, simplifyVector = FALSE)$stats
     team_id  <- tryCatch(as.integer(bio_data$currentTeam$id), error = function(e) NA_integer_)
     
-    # Compute wRC+ from hitting stats (2024 linear weights & league constants)
-    # NOTE: avoid return() inside tryCatch({}) — it exits the parent function
-    # (same trap as the WAR block above).  Use if/else expressions instead.
     wrc_plus <- if (length(hit_data) > 0 && length(hit_data[[1]]$splits) > 0) {
       s <- hit_data[[1]]$splits[[1]]$stat
       tryCatch({
@@ -565,7 +514,7 @@ fetch_player_season_stats_raw <- function(person_id) {
       }, error = function(e) NA_real_)
     } else NA_real_
     
-    # Pitch arsenal from Baseball Savant (pitchers only)
+    # Pitch arsenal from Baseball Savant (fast JSON, pitchers only)
     pitch_arsenal <- if (is_pitcher) {
       safe({
         ars_url <- paste0(
@@ -575,7 +524,6 @@ fetch_player_season_stats_raw <- function(person_id) {
         )
         df <- suppressWarnings(jsonlite::fromJSON(ars_url, simplifyDataFrame = TRUE))
         if (is.data.frame(df) && nrow(df) > 0) {
-          # Compute usage % from count / total pitches
           if (!"pitch_percent" %in% names(df) && "count" %in% names(df)) {
             total <- sum(as.numeric(df$count), na.rm = TRUE)
             df$pitch_percent <- if (total > 0) as.numeric(df$count) / total else NA_real_
@@ -590,7 +538,7 @@ fetch_player_season_stats_raw <- function(person_id) {
                        "type=", pct_type, "&playerId=", person_id, "&season=", season)
     pct_data <- safe(suppressWarnings(jsonlite::fromJSON(pct_url, simplifyVector = TRUE)))
     
-    # L/R splits for hitters (vs Left-Handed Pitching / vs Right-Handed Pitching)
+    # L/R splits for hitters
     splits_data <- if (!is_pitcher) {
       safe({
         sp_url <- paste0("https://statsapi.mlb.com/api/v1/people/", person_id,
@@ -611,7 +559,7 @@ fetch_player_season_stats_raw <- function(person_id) {
       })
     } else NULL
     
-    # Pitcher L/R splits (vs Left-Handed Batters / vs Right-Handed Batters)
+    # Pitcher L/R splits
     pit_splits_data <- if (is_pitcher) {
       safe({
         sp_url <- paste0("https://statsapi.mlb.com/api/v1/people/", person_id,
@@ -624,23 +572,22 @@ fetch_player_season_stats_raw <- function(person_id) {
           vl <- NULL; vr <- NULL
           for (sp in sp_raw[[1]]$splits) {
             code <- tryCatch(sp$split$code, error = function(e) "")
-            if (identical(code, "vl")) vl <- sp$stat   # vs left-handed batters
-            if (identical(code, "vr")) vr <- sp$stat   # vs right-handed batters
+            if (identical(code, "vl")) vl <- sp$stat
+            if (identical(code, "vr")) vr <- sp$stat
           }
           list(vl = vl, vr = vr)
         }
       })
     } else NULL
     
-    # Statcast movement + velocity data for pitchers
-    mov_full <- if (is_pitcher) fetch_pitcher_movement(person_id) else NULL
-    movement_data <- if (!is.null(mov_full)) mov_full$summary     else NULL
-    movement_raw  <- if (!is.null(mov_full)) mov_full$raw_pitches else NULL
+    # ── movement_data / movement_raw are intentionally NOT fetched here ──────
+    # fetch_pitcher_movement() downloads a ~16 MB CSV and blocks the modal for
+    # several seconds.  The two renderPlot outputs (pitcher_movement_plot and
+    # pitcher_heatmap) call it directly so it loads in the background after the
+    # stats are already visible.  build_pitcher_profile_ui() falls back to
+    # pitch_arsenal for the characteristic cards when movement_data is NULL.
     
-    # bWAR lookup — try multiple matching strategies for robustness.
-    # NOTE: must NOT use return() inside safe({}); return() exits the parent
-    # function (fetch_player_season_stats_raw), making it return NA_real_
-    # instead of the list of season stats.  Use a result variable instead.
+    # WAR lookup from cache
     war_val <- safe({
       if (!is_pitcher && is.null(.war_cache$batters))  fetch_lb_batters()
       if (is_pitcher  && is.null(.war_cache$pitchers)) fetch_lb_pitchers()
@@ -651,19 +598,16 @@ fetch_player_season_stats_raw <- function(person_id) {
         pid_i <- as.integer(person_id)
         nm    <- tolower(trimws(as.character(bio_data$fullName %||% "")))
         
-        # Strategy 1: match by mlb_id (most reliable)
         if ("mlb_id" %in% names(df) && !is.na(pid_i)) {
           rows <- df[!is.na(df$mlb_id) & df$mlb_id == pid_i, ]
           if (nrow(rows) > 0)
             result <- suppressWarnings(as.numeric(rows$WAR[1]))
         }
-        # Strategy 2: exact case-insensitive name match
         if (is.na(result) && "Name" %in% names(df) && nchar(nm) > 0) {
           rows <- df[tolower(trimws(as.character(df$Name))) == nm, ]
           if (nrow(rows) > 0)
             result <- suppressWarnings(as.numeric(rows$WAR[1]))
         }
-        # Strategy 3: bbref_id column (some daily tables use this)
         if (is.na(result) && "bbref_id" %in% names(df) && nchar(nm) > 0) {
           rows <- df[tolower(trimws(as.character(df$bbref_id))) == nm, ]
           if (nrow(rows) > 0)
@@ -673,14 +617,9 @@ fetch_player_season_stats_raw <- function(person_id) {
       result
     })
     
-    # Determine which source produced the WAR value (for the label)
     war_source <- if (is_pitcher) (.war_cache$pitchers_source %||% "none")
     else            (.war_cache$batters_source  %||% "none")
     
-    # ── Strategy 4: COMPUTE our own WAR estimate ──────────────────────────
-    # Falls back to a from-scratch calculation if no external source had data.
-    # Uses MLB Stats API season stats we already fetched (no extra calls).
-    # Marked as "estimate" so the UI labels it "WAR (est.)".
     if (is.null(war_val) || is.na(war_val)) {
       computed <- safe({
         pos_code <- tryCatch(as.character(bio_data$primaryPosition$abbreviation %||% "OF"),
@@ -697,7 +636,6 @@ fetch_player_season_stats_raw <- function(person_id) {
       }
     }
     
-    # Full team history this season (e.g. "OAK,BOS" for traded players)
     team_history <- safe({
       if (!is.null(df_war_lookup <- if (!is_pitcher) .war_cache$batters else .war_cache$pitchers)) {
         nm   <- tolower(as.character(bio_data$fullName %||% ""))
@@ -723,8 +661,8 @@ fetch_player_season_stats_raw <- function(person_id) {
       splits_vr     = if (!is.null(splits_data))     splits_data$vr     else NULL,
       pit_splits_vl = if (!is.null(pit_splits_data)) pit_splits_data$vl else NULL,
       pit_splits_vr = if (!is.null(pit_splits_data)) pit_splits_data$vr else NULL,
-      movement_data = movement_data,
-      movement_raw  = movement_raw,
+      movement_data = NULL,   # fetched lazily by renderPlot outputs
+      movement_raw  = NULL,   # fetched lazily by renderPlot outputs
       war_val       = war_val,
       war_source    = war_source,
       team_history  = team_history
@@ -732,8 +670,4 @@ fetch_player_season_stats_raw <- function(person_id) {
   })
 }
 
-# Memoise so repeat clicks on the same player are instant (deduplicates the
-# observer + renderUI double-fetch and avoids 6+ duplicate API calls).
-# Wrapping in a fresh memoise() on each source() ensures any stale cached
-# values from a previous (buggy) version don't survive an app restart.
 fetch_player_season_stats <- memoise::memoise(fetch_player_season_stats_raw)

@@ -135,18 +135,13 @@ make_dt <- function(df, top2 = NULL, kind = c("batting","pitching")) {
   
   has_pid <- "person_id" %in% names(df)
   df      <- df %>% mutate(.h = as.integer(Name %in% (top2 %||% character(0))))
-  # Move person_id to just before .h so JS data[data.length-2] always finds it
   if (has_pid) df <- df %>% dplyr::relocate(person_id, .before = .h)
   
-  # Hidden columns (0-based): .h is always last; person_id is second-to-last
   n_cols  <- ncol(df)
   h_idx   <- n_cols - 1L
   pid_idx <- if (has_pid) n_cols - 2L else integer(0)
   hidden  <- c(h_idx, pid_idx)
   
-  # Row click: send player id + name to Shiny.
-  # Pitching tables fire pitcher_profile_click directly so the user lands on
-  # the pitch movement/strike zone view in one click.
   click_target <- if (identical(kind, "pitching")) "pitcher_profile_click" else "player_click"
   row_cb <- if (has_pid) DT::JS(sprintf(
     "function(row, data) {
@@ -231,18 +226,13 @@ player_stat_card <- function(rank, name, g, ab, avg, obp, slg, ops, war = NA) {
   )
 }
 
-# ── CSS ────────────────────────────────────────────────────────────────────
-
 
 build_player_modal_ui <- function(data) {
-  # Defensive: data should be a list; fail gracefully if something upstream
-  # returned an atomic (e.g. a stray return() inside safe({}) escaping a function)
   if (is.null(data) || !is.list(data))
     return(div(style = "color:#8b949e;padding:20px;", "Season stats unavailable."))
   
   bio  <- data$bio
   team <- tryCatch(bio$currentTeam$name       %||% "\u2014", error = function(e) "\u2014")
-  # If bref shows multiple teams this season, display them all
   th <- data$team_history
   if (!is.null(th) && grepl("[,/|]", as.character(th))) {
     teams_all <- trimws(strsplit(as.character(th), "[,/|]")[[1]])
@@ -267,12 +257,9 @@ build_player_modal_ui <- function(data) {
     paste0("https://www.mlbstatic.com/team-logos/", team_id, ".svg")
   else NULL
   
-  # ── Shared helpers ────────────────────────────────────────────────────────
   fmt3 <- function(x) tryCatch(sprintf("%.3f", as.numeric(x)), error = function(e) "\u2014")
   fmt0 <- function(x) tryCatch(as.character(as.integer(x)),    error = function(e) "\u2014")
-  fmt1 <- function(x) tryCatch(sprintf("%.1f", as.numeric(x)), error = function(e) "\u2014")
   
-  # pct_col() now defined globally in R/globals.R (blue → orange gradient)
   pct_badge <- function(pct, label) {
     if (is.null(pct) || length(pct) == 0 || is.na(pct)) return(NULL)
     v <- as.integer(round(as.numeric(pct)))
@@ -292,9 +279,12 @@ build_player_modal_ui <- function(data) {
     v >= 160 ~ "#FFD700", v >= 130 ~ "#4ade80",
     v >= 110 ~ "#86efac", v >= 90  ~ "#c9d1d9", TRUE ~ "#6e7681"
   )
-  adj_stat <- function(val, lbl) {
+  # col_override: pass "#e6edf3" for WAR so it renders white.
+  # ops_col() treats WAR values (typically 0–8) as dim grey; override forces white.
+  adj_stat <- function(val, lbl, col_override = NULL) {
     v   <- suppressWarnings(as.numeric(val))
-    col <- if (!is.null(val) && !is.na(v)) ops_col(v) else "#8b949e"
+    col <- if (!is.null(col_override)) col_override
+    else if (!is.null(val) && !is.na(v)) ops_col(v) else "#8b949e"
     div(class = "adj-stat",
         div(class = "adj-val", style = paste0("color:", col, ";"),
             as.character(val %||% "\u2014")),
@@ -305,8 +295,7 @@ build_player_modal_ui <- function(data) {
         div(class = "ms-val", as.character(val %||% "\u2014")),
         div(class = "ms-lbl", lbl))
   
-  # Pitch-type accent colours
-  pitch_col <- function(pt) {
+  pitch_col_local <- function(pt) {
     switch(toupper(as.character(pt %||% "")),
            "FF" = "#ef4444", "SI" = "#f97316", "FC" = "#f59e0b",
            "SL" = "#3b82f6", "SW" = "#60a5fa", "ST" = "#93c5fd",
@@ -316,7 +305,6 @@ build_player_modal_ui <- function(data) {
     )
   }
   
-  # ── Player header: headshot + bio + team logo ─────────────────────────────
   player_hdr <- div(class = "player-modal-hdr",
                     tags$img(class = "player-headshot", src = headshot_url,
                              onerror = paste0("this.onerror=null;this.src='",
@@ -337,7 +325,6 @@ build_player_modal_ui <- function(data) {
                       tags$img(class = "team-logo-hdr", src = team_logo_url)
   )
   
-  # ── Statcast percentile row ───────────────────────────────────────────────
   sc_pct_row <- {
     pd <- data$percentiles
     if (!is.null(pd) && (is.data.frame(pd) || is.list(pd)) && length(pd) > 0) {
@@ -401,15 +388,13 @@ build_player_modal_ui <- function(data) {
     wrc_plus <- data$wrc_plus
     war_h    <- data$war_val
     war_lbl  <- switch(as.character(data$war_source %||% "bref"),
-                       "fangraphs" = "fWAR",
-                       "estimate"  = "WAR (est.)",
-                       "none"      = "WAR",
-                       "bWAR")
+                       "fangraphs" = "fWAR", "estimate" = "WAR (est.)",
+                       "none" = "WAR", "bWAR")
     adj <- div(class="adj-stat-line",
                adj_stat(if(!is.null(ops_plus)&&!is.na(ops_plus)) ops_plus else "\u2014","OPS+"),
                adj_stat(if(!is.null(wrc_plus)&&!is.na(wrc_plus)) round(wrc_plus) else "\u2014","wRC+"),
                if(!is.null(war_h)&&!is.na(war_h))
-                 adj_stat(sprintf("%.1f", as.numeric(war_h)), war_lbl)
+                 adj_stat(sprintf("%.1f", as.numeric(war_h)), war_lbl, col_override = "#e6edf3")
     )
     stats_grid <- tagList(
       div(class="ms-section-hdr","Season Hitting"),
@@ -422,7 +407,6 @@ build_player_modal_ui <- function(data) {
           sb(fmt3(s$babip),    "BABIP"), sb(fmt0(s$runs),       "R")
       )
     )
-    # L/R splits table
     splits_sec <- {
       vl <- data$splits_vl;  vr <- data$splits_vr
       if (!is.null(vl) || !is.null(vr)) {
@@ -490,7 +474,6 @@ build_player_modal_ui <- function(data) {
                     slash_cell(baa_v, "BAA",  stat_pct(as.numeric(baa_v),0.320,0.155))
     )
     
-    # ── Pitch arsenal ─────────────────────────────────────────────────────
     arsenal_sec <- {
       ars <- data$pitch_arsenal
       if (!is.null(ars) && is.data.frame(ars) && nrow(ars) > 0) {
@@ -498,19 +481,12 @@ build_player_modal_ui <- function(data) {
           row    <- ars[i, ]
           ptype  <- tryCatch(as.character(row$pitch_type), error=function(e)"??")
           pname  <- tryCatch(as.character(row$pitch_name  %||% ptype), error=function(e) ptype)
-          usage  <- tryCatch(
-            sprintf("%.1f%%", as.numeric(row$pitch_percent)*100),
-            error = function(e) "?%"
-          )
-          velo   <- tryCatch(sprintf("%.1f mph",  as.numeric(row$avg_speed)), error=function(e) NULL)
-          spin   <- tryCatch(
-            paste0(format(round(as.numeric(row$avg_spin)), big.mark=","), " rpm"),
-            error=function(e) NULL
-          )
+          usage  <- tryCatch(sprintf("%.1f%%", as.numeric(row$pitch_percent)*100), error=function(e)"?%")
+          velo   <- tryCatch(sprintf("%.1f mph", as.numeric(row$avg_speed)), error=function(e) NULL)
+          spin   <- tryCatch(paste0(format(round(as.numeric(row$avg_spin)), big.mark=","), " rpm"), error=function(e) NULL)
           whiff  <- tryCatch(sprintf("%.1f%% whiff", as.numeric(row$whiff_percent)), error=function(e) NULL)
-          col    <- pitch_col(ptype)
-          div(class="pitch-card",
-              style=paste0("border-top:3px solid ",col,";"),
+          col    <- pitch_col_local(ptype)
+          div(class="pitch-card", style=paste0("border-top:3px solid ",col,";"),
               div(class="pitch-type-badge", style=paste0("background:",col,";"), ptype),
               div(class="pitch-name", pname),
               div(class="pitch-usage", usage),
@@ -521,10 +497,7 @@ build_player_modal_ui <- function(data) {
               )
           )
         })
-        tagList(
-          div(class="ms-section-hdr", "Pitch Arsenal"),
-          div(class="pitch-grid", tagList(cards))
-        )
+        tagList(div(class="ms-section-hdr","Pitch Arsenal"), div(class="pitch-grid", tagList(cards)))
       }
     }
     
@@ -546,51 +519,46 @@ build_player_modal_ui <- function(data) {
           sb(era_v,"ERA"), sb(as.character(s$inningsPitched %||% "\u2014"),"IP"),
           sb(fmt0(s$strikeOuts),"K"),   sb(fmt0(s$baseOnBalls),"BB"),
           sb(fmt0(s$hits),"H"),         sb(fmt0(s$homeRuns),"HR"),
-          sb(whip_v,"WHIP"), sb(k9_v,"K/9"), sb(bb9_v,"BB/9"),
-          sb(baa_v,"BAA")
+          sb(whip_v,"WHIP"), sb(k9_v,"K/9"), sb(bb9_v,"BB/9"), sb(baa_v,"BAA")
       )
     )
     war_p    <- data$war_val
     war_lblp <- switch(as.character(data$war_source %||% "bref"),
-                       "fangraphs" = "fWAR",
-                       "estimate"  = "WAR (est.)",
-                       "none"      = "WAR",
-                       "bWAR")
+                       "fangraphs" = "fWAR", "estimate" = "WAR (est.)", "none" = "WAR", "bWAR")
     war_line <- if (!is.null(war_p) && !is.na(war_p)) {
       div(class="adj-stat-line",
-          adj_stat(sprintf("%.1f", as.numeric(war_p)), war_lblp))
+          adj_stat(sprintf("%.1f", as.numeric(war_p)), war_lblp, col_override = "#e6edf3"))
     } else NULL
     
-    div(style="padding:4px;",
-        player_hdr,
-        key_line,    # ERA / WHIP / K9 / BB9 / BAA slash line
-        war_line,    # bWAR right after key stats
+    div(style="padding:4px;", player_hdr, key_line, war_line,
         arsenal_sec, sc_pct_row, trad_pct, stats_grid)
   }
 }
 
-# ── Pitch movement chart ─────────────────────────────────────────────────────
+# ── Pitcher profile (movement + RV/100 + splits) ─────────────────────────────
+# movement_data is now NULL on first open (loaded lazily by renderPlot).
+# When NULL, falls back to pitch_arsenal for the characteristic cards.
+# avg_break_x / avg_break_z_induced are Savant arsenal columns (inches);
+# they are added to the fallback chain so break data still shows.
 
 build_pitcher_profile_ui <- function(data) {
   if (is.null(data) || !is.list(data))
     return(div(style="color:#8b949e;padding:10px;", "No pitch data."))
   
-  mov <- data$movement_data   # Statcast CSV: has velo + h/v break
-  ars <- data$pitch_arsenal   # Arsenal stats: has RV/100, whiff%
+  mov <- data$movement_data   # NULL on first open; populated after CSV loads
+  ars <- data$pitch_arsenal   # fast JSON endpoint — always available
   primary <- if (!is.null(mov) && is.data.frame(mov) && nrow(mov) > 0) mov else ars
   
   if (is.null(primary) || !is.data.frame(primary) || nrow(primary) == 0)
     return(div(style="color:#8b949e;padding:10px;", "No pitch data available."))
   
-  # ── Per-pitch characteristic cards ─────────────────────────────────────────
   velo_cards <- lapply(seq_len(nrow(primary)), function(i) {
     row   <- primary[i, ]
     ptype <- toupper(tryCatch(as.character(row[["pitch_type"]] %||% "??"), error=function(e)"??"))
     if (ptype %in% NON_PITCH_TYPES) return(NULL)
-    # Filter to pitches thrown ≥10 times this season
     n_p <- suppressWarnings(as.numeric(row[["n_pitches"]] %||% row[["count"]] %||% 0))
     if (!is.na(n_p) && n_p < 10) return(NULL)
-    pname <- pitch_full_name(ptype)   # always use full name, not abbreviation
+    pname <- pitch_full_name(ptype)
     usage <- tryCatch({
       if ("pitch_percent" %in% names(primary))
         sprintf("%.1f%%", as.numeric(row[["pitch_percent"]]) * 100)
@@ -599,22 +567,35 @@ build_pitcher_profile_ui <- function(data) {
         if (tot > 0) sprintf("%.1f%%", as.numeric(row[["count"]]) / tot * 100) else "?%"
       } else "?%"
     }, error=function(e) "?%")
+    
     velo <- tryCatch(sprintf("%.1f mph",
                              as.numeric(row[["velo"]] %||% row[["release_speed"]] %||% row[["avg_speed"]])),
                      error=function(e) "\u2014")
+    
+    # Break: Statcast CSV uses h_break_in / pfx_x; arsenal JSON uses avg_break_x
+    # avg_break_z_induced is induced vertical break in inches (same as pfx_z*12)
     hb <- tryCatch(sprintf("%+.1f\"",
-                           as.numeric(row[["h_break_in"]] %||% {as.numeric(row[["pfx_x"]]) * 12} %||%
-                                        row[["pitcher_break_x"]])),
+                           as.numeric(row[["h_break_in"]] %||%
+                                        { v <- suppressWarnings(as.numeric(row[["pfx_x"]]));
+                                        if (!is.na(v)) v * 12 else NULL } %||%
+                                        row[["pitcher_break_x"]] %||%
+                                        row[["avg_break_x"]])),
                    error=function(e) "\u2014")
     vb <- tryCatch(sprintf("%+.1f\"",
-                           as.numeric(row[["v_break_in"]] %||% {as.numeric(row[["pfx_z"]]) * 12} %||%
-                                        row[["pitcher_break_z"]])),
+                           as.numeric(row[["v_break_in"]] %||%
+                                        { v <- suppressWarnings(as.numeric(row[["pfx_z"]]));
+                                        if (!is.na(v)) v * 12 else NULL } %||%
+                                        row[["pitcher_break_z"]] %||%
+                                        row[["avg_break_z_induced"]] %||%
+                                        row[["avg_break_z"]])),
                    error=function(e) "\u2014")
+    
     spin <- tryCatch(
       paste0(format(round(as.numeric(
         row[["spin_rate"]] %||% row[["release_spin_rate"]] %||% row[["avg_spin"]]
       )), big.mark=","), " rpm"),
       error=function(e) "\u2014")
+    
     col <- pitch_col(ptype)
     div(class="pitch-char-card", style=paste0("border-left:3px solid ",col,";"),
         div(class="pch-top",
@@ -622,7 +603,6 @@ build_pitcher_profile_ui <- function(data) {
             div(class="pch-name-usage",
                 div(class="pch-name", pname), div(class="pch-usage", usage))
         ),
-        # Velocity & Spin paired on row 1, H-Break & V-Break on row 2 (2×2 grid)
         div(class="pch-metrics",
             div(class="pch-metric", div(class="pch-val",velo), div(class="pch-lbl","Velocity")),
             div(class="pch-metric", div(class="pch-val",spin), div(class="pch-lbl","Spin")),
@@ -632,7 +612,6 @@ build_pitcher_profile_ui <- function(data) {
     )
   })
   
-  # ── RV/100 percentile badges (from arsenal data) ───────────────────────────
   rv_sec <- NULL
   if (!is.null(ars) && is.data.frame(ars) && nrow(ars) > 0) {
     rv100_pct <- function(rv) {
@@ -640,7 +619,6 @@ build_pitcher_profile_ui <- function(data) {
       if (is.na(v)) return(NA_integer_)
       as.integer(max(1L, min(99L, round(50 - v * 16))))
     }
-    # pcc() removed — using global pct_col() instead (blue → orange gradient)
     rv_bdg <- lapply(seq_len(nrow(ars)), function(i) {
       row   <- ars[i, ]
       pt    <- toupper(as.character(row$pitch_type %||% "??"))
@@ -666,14 +644,10 @@ build_pitcher_profile_ui <- function(data) {
       div(class="pct-grid", tagList(rv_bdg)))
   }
   
-  # ── Pitcher L/R splits ─────────────────────────────────────────────────────
   splits_sec <- NULL
   vl <- data$pit_splits_vl; vr <- data$pit_splits_vr
   if (!is.null(vl) || !is.null(vr)) {
-    g0 <- function(sp,f) tryCatch(as.character(sp[[f]]),   error=function(e)"\u2014")
-    f2 <- function(sp,f) tryCatch(sprintf("%.2f",as.numeric(sp[[f]])),error=function(e)"\u2014")
-    
-    # Parse MLB IP string ("53.2" = 53 + 2/3 innings, not 53.2 decimal)
+    g0 <- function(sp,f) tryCatch(as.character(sp[[f]]), error=function(e)"\u2014")
     parse_ip <- function(sp) {
       ip_str <- as.character(sp[["inningsPitched"]] %||% "")
       if (!nchar(ip_str) || is.na(ip_str)) return(NA_real_)
@@ -683,7 +657,6 @@ build_pitcher_profile_ui <- function(data) {
       ip <- whole + thirds / 3
       if (is.na(ip) || ip <= 0) NA_real_ else ip
     }
-    # Try API field first, then compute (MLB Stats API splits often omit era/whip)
     compute_era <- function(sp) {
       tryCatch({
         v <- sp[["era"]] %||% sp[["earnedRunAverage"]]
@@ -711,7 +684,6 @@ build_pitcher_profile_ui <- function(data) {
         sprintf("%.2f", (bb + h) / ip)
       }, error = function(e) "\u2014")
     }
-    
     sp_row <- function(lbl, sp) {
       if (is.null(sp)) return(NULL)
       div(class="split-row",
@@ -731,14 +703,10 @@ build_pitcher_profile_ui <- function(data) {
       div(class="splits-tbl",
           div(class="split-row split-hdr-row",
               div(class="split-label",""),
-              div(class="split-stat rate","BAA"),
-              div(class="split-stat rate","OBP"),
-              div(class="split-stat rate","SLG"),
-              div(class="split-stat rate","ERA"),
-              div(class="split-stat rate","WHIP"),
-              div(class="split-stat cnt", "K"),
-              div(class="split-stat cnt", "BB"),
-              div(class="split-stat cnt", "AB")
+              div(class="split-stat rate","BAA"), div(class="split-stat rate","OBP"),
+              div(class="split-stat rate","SLG"), div(class="split-stat rate","ERA"),
+              div(class="split-stat rate","WHIP"),div(class="split-stat cnt", "K"),
+              div(class="split-stat cnt", "BB"),  div(class="split-stat cnt", "AB")
           ),
           sp_row("vs LHB", vl),
           sp_row("vs RHB", vr)
